@@ -190,6 +190,28 @@ export default function CompanyPage() {
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
 
+  interface CompanyTicketRow {
+    id: string;
+    ticketCode: string;
+    busId: string;
+    passengerName?: string;
+    origin?: string;
+    destination?: string;
+    createdAt: number;
+  }
+  const [busTickets, setBusTickets] = useState<CompanyTicketRow[]>([]);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [ticketModalOpen, setTicketModalOpen] = useState(false);
+  const [ticketForm, setTicketForm] = useState({
+    ticketCode: "",
+    passengerName: "",
+    origin: "",
+    destination: "",
+  });
+  const [ticketSubmitting, setTicketSubmitting] = useState(false);
+  const [ticketError, setTicketError] = useState<string | null>(null);
+  const [ticketSuccess, setTicketSuccess] = useState<string | null>(null);
+
   const [incidentForm, setIncidentForm] =
     useState<IncidentFormState>({
       busId: null,
@@ -306,6 +328,35 @@ export default function CompanyPage() {
     if (!dashboard || !selectedBusId) return null;
     return dashboard.buses.find((b) => b.id === selectedBusId) ?? null;
   }, [dashboard, selectedBusId]);
+
+  const loadBusTickets = async (busId: string) => {
+    setTicketsLoading(true);
+    setTicketError(null);
+    try {
+      const res = await fetch(
+        `/api/company/tickets?busId=${encodeURIComponent(busId)}`,
+        { credentials: "same-origin" }
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "Error al cargar pasajes");
+      setBusTickets(Array.isArray(data.tickets) ? data.tickets : []);
+    } catch (e) {
+      setBusTickets([]);
+      setTicketError(
+        e instanceof Error ? e.message : "Error al cargar pasajes"
+      );
+    } finally {
+      setTicketsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedBusId) {
+      setBusTickets([]);
+      return;
+    }
+    void loadBusTickets(selectedBusId);
+  }, [selectedBusId]);
 
   const filteredBuses = useMemo(() => {
     if (!dashboard) return [];
@@ -1060,9 +1111,266 @@ export default function CompanyPage() {
                   </dl>
                 </div>
               </div>
+
+              {/* Pasajes asociados al micro */}
+              <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Pasajes del micro
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTicketModalOpen(true);
+                      setTicketError(null);
+                      setTicketSuccess(null);
+                      setTicketForm({
+                        ticketCode: "",
+                        passengerName: "",
+                        origin: "",
+                        destination: "",
+                      });
+                    }}
+                    className="rounded-lg border border-sky-500 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-100"
+                  >
+                    Añadir pasaje
+                  </button>
+                </div>
+                {ticketSuccess && (
+                  <p className="mb-2 text-xs font-medium text-emerald-700">
+                    {ticketSuccess}
+                  </p>
+                )}
+                {ticketError && !ticketModalOpen && (
+                  <p className="mb-2 text-xs text-red-600">{ticketError}</p>
+                )}
+                {ticketsLoading ? (
+                  <p className="text-xs text-slate-500">Cargando pasajes…</p>
+                ) : busTickets.length === 0 ? (
+                  <p className="text-xs text-slate-500">
+                    Ningún pasaje creado para este micro. Los pasajeros pueden
+                    buscar por número solo si agregás un pasaje aquí (además
+                    de los códigos demo del micro).
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-500">
+                          <th className="pb-2 pr-3 font-medium">Nº pasaje</th>
+                          <th className="pb-2 pr-3 font-medium">Pasajero</th>
+                          <th className="pb-2 pr-3 font-medium">Origen</th>
+                          <th className="pb-2 pr-3 font-medium">Destino</th>
+                          <th className="pb-2 font-medium">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {busTickets.map((t) => (
+                          <tr
+                            key={t.id}
+                            className="border-b border-slate-100 last:border-0"
+                          >
+                            <td className="py-2 pr-3 font-mono font-medium">
+                              {t.ticketCode}
+                            </td>
+                            <td className="py-2 pr-3 text-slate-700">
+                              {t.passengerName ?? "—"}
+                            </td>
+                            <td className="py-2 pr-3 text-slate-600">
+                              {t.origin ?? "—"}
+                            </td>
+                            <td className="py-2 pr-3 text-slate-600">
+                              {t.destination ?? "—"}
+                            </td>
+                            <td className="py-2">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (
+                                    !confirm(
+                                      "¿Eliminar este pasaje? El pasajero ya no podrá buscarlo."
+                                    )
+                                  )
+                                    return;
+                                  const res = await fetch(
+                                    `/api/company/tickets/${encodeURIComponent(t.id)}`,
+                                    {
+                                      method: "DELETE",
+                                      credentials: "same-origin",
+                                    }
+                                  );
+                                  const data = await res.json().catch(() => null);
+                                  if (!res.ok) {
+                                    setTicketError(
+                                      data?.error ?? "No se pudo eliminar"
+                                    );
+                                    return;
+                                  }
+                                  setTicketSuccess(
+                                    "Pasaje eliminado correctamente"
+                                  );
+                                  void loadBusTickets(selectedBus.id);
+                                  setTimeout(() => setTicketSuccess(null), 3000);
+                                }}
+                                className="text-red-600 hover:underline"
+                              >
+                                Borrar
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </section>
+
+        {/* Modal añadir pasaje */}
+        {ticketModalOpen && selectedBus && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ticket-modal-title"
+          >
+            <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
+              <h2
+                id="ticket-modal-title"
+                className="mb-4 text-lg font-semibold text-slate-900"
+              >
+                Añadir pasaje — {selectedBus.unitId}
+              </h2>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setTicketError(null);
+                  if (!ticketForm.ticketCode.trim()) {
+                    setTicketError("El número de pasaje es obligatorio.");
+                    return;
+                  }
+                  setTicketSubmitting(true);
+                  try {
+                    const res = await fetch("/api/company/tickets", {
+                      method: "POST",
+                      credentials: "same-origin",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        busId: selectedBus.id,
+                        ticketCode: ticketForm.ticketCode.trim(),
+                        passengerName:
+                          ticketForm.passengerName.trim() || undefined,
+                        origin: ticketForm.origin.trim() || undefined,
+                        destination:
+                          ticketForm.destination.trim() || undefined,
+                      }),
+                    });
+                    const data = await res.json().catch(() => null);
+                    if (!res.ok) {
+                      throw new Error(data?.error ?? "Error al crear pasaje");
+                    }
+                    setTicketSuccess(data?.message ?? "Pasaje creado correctamente");
+                    setTicketModalOpen(false);
+                    void loadBusTickets(selectedBus.id);
+                    setTimeout(() => setTicketSuccess(null), 4000);
+                  } catch (err) {
+                    setTicketError(
+                      err instanceof Error ? err.message : "Error al crear"
+                    );
+                  } finally {
+                    setTicketSubmitting(false);
+                  }
+                }}
+                className="space-y-3"
+              >
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Número de pasaje <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={ticketForm.ticketCode}
+                    onChange={(e) =>
+                      setTicketForm((p) => ({
+                        ...p,
+                        ticketCode: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="Ej. PAS2025-001"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Nombre del pasajero (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={ticketForm.passengerName}
+                    onChange={(e) =>
+                      setTicketForm((p) => ({
+                        ...p,
+                        passengerName: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Origen (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={ticketForm.origin}
+                    onChange={(e) =>
+                      setTicketForm((p) => ({ ...p, origin: e.target.value }))
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600">
+                    Destino (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={ticketForm.destination}
+                    onChange={(e) =>
+                      setTicketForm((p) => ({
+                        ...p,
+                        destination: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                {ticketError && (
+                  <p className="text-xs text-red-600">{ticketError}</p>
+                )}
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setTicketModalOpen(false)}
+                    className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={ticketSubmitting}
+                    className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+                  >
+                    {ticketSubmitting ? "Guardando…" : "Guardar"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Modal confirmar borrar micro */}
         {deleteConfirmBusId && (

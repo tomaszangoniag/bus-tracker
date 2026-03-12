@@ -623,6 +623,15 @@ export function deleteBusForCompany(
   mobileGpsHistory.delete(busId);
   buses.delete(busId);
   try {
+    const { loadCompanyTickets, removeCompanyTicket } =
+      require("@/lib/demoCompanyTicketsPersistence") as typeof import("@/lib/demoCompanyTicketsPersistence");
+    for (const t of loadCompanyTickets()) {
+      if (t.busId === busId) removeCompanyTicket(t.id);
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
     const { removeCustomBus } =
       require("@/lib/demoBusesPersistence") as typeof import("@/lib/demoBusesPersistence");
     removeCustomBus(busId);
@@ -861,6 +870,10 @@ export function getBusById(id: string): BusState | undefined {
   return buses.get(id);
 }
 
+/**
+ * Resuelve viaje por código de pasaje: primero pasajes emitidos desde empresa,
+ * luego ticketCode nativo del bus (demo seed).
+ */
 export function getTripByTicketAndCompany(
   ticketCode: string,
   company: string
@@ -892,11 +905,41 @@ export function getTripByTicketAndCompany(
   ensureBusesInitialized();
   maybeTick();
 
-  const bus = Array.from(buses.values()).find(
-    (b) =>
-      b.ticketCode.toUpperCase() === ticketCode.toUpperCase() &&
-      (b.companySlug === company || b.company === company)
-  );
+  const codeUpper = ticketCode.trim().toUpperCase();
+  let bus: BusState | undefined;
+  let resolvedTicketCode = ticketCode.trim();
+
+  try {
+    const { loadCompanyTickets } =
+      require("@/lib/demoCompanyTicketsPersistence") as typeof import("@/lib/demoCompanyTicketsPersistence");
+    const issued = loadCompanyTickets().find(
+      (t) =>
+        t.ticketCode.toUpperCase() === codeUpper &&
+        t.companySlug === company
+    );
+    if (issued) {
+      bus = buses.get(issued.busId);
+      if (
+        bus &&
+        (bus.companySlug === company || bus.companySlug === issued.companySlug)
+      ) {
+        resolvedTicketCode = issued.ticketCode;
+      } else {
+        bus = undefined;
+      }
+    }
+  } catch {
+    /* sin fs */
+  }
+
+  if (!bus) {
+    bus = Array.from(buses.values()).find(
+      (b) =>
+        b.ticketCode.toUpperCase() === codeUpper &&
+        (b.companySlug === company || b.company === company)
+    );
+    if (bus) resolvedTicketCode = bus.ticketCode;
+  }
   if (!bus) return null;
 
   const hasGpsFix =
@@ -959,7 +1002,7 @@ export function getTripByTicketAndCompany(
 
   return {
     tripId: bus.tripId,
-    ticketCode: bus.ticketCode,
+    ticketCode: resolvedTicketCode,
     company: bus.companySlug,
     companySlug: bus.companySlug,
     routeWaypoints: waypoints,
