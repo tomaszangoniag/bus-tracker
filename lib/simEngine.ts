@@ -256,7 +256,8 @@ function appendMobileGpsHistory(busId: string, lat: number, lng: number): void {
 export function applyMobileGpsUpdate(
   busId: string,
   lat: number,
-  lng: number
+  lng: number,
+  options?: { speedKmh?: number; timestamp?: number }
 ): { ok: boolean; error?: string } {
   ensureBusesInitialized();
   const bus = buses.get(busId);
@@ -267,6 +268,13 @@ export function applyMobileGpsUpdate(
   bus.lat = lat;
   bus.lng = lng;
   bus.updatedAt = now();
+  if (
+    options?.speedKmh != null &&
+    Number.isFinite(options.speedKmh) &&
+    options.speedKmh >= 0
+  ) {
+    bus.speedKmh = Math.min(130, Math.max(0, options.speedKmh));
+  }
   appendMobileGpsHistory(busId, lat, lng);
   return { ok: true };
 }

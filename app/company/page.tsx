@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { clearDemoSession } from "@/lib/authClient";
 
 const BusMap = dynamic(() => import("@/components/BusMap"), { ssr: false });
+const MobileGpsConnect = dynamic(
+  () => import("@/components/MobileGpsConnect"),
+  { ssr: false }
+);
 
 type BusStatus = "NORMAL" | "DELAY" | "INCIDENT";
 
@@ -714,15 +718,23 @@ export default function CompanyPage() {
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
               <div className="min-h-[280px]">
                 {selectedBus.gpsPending || !selectedBus.position ? (
-                  <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-xl border border-amber-200 bg-amber-50/80 px-4 text-center text-sm text-amber-900">
-                    <p className="font-semibold">GPS pendiente de conexión</p>
-                    <p className="mt-2 max-w-sm text-xs text-amber-800">
-                      Este micro usa GPS del celular. Cuando el chofer envíe
-                      posición con{" "}
-                      <code className="rounded bg-white px-1">POST /api/gps/update</code>{" "}
-                      (busId: <code className="rounded bg-white px-1">{selectedBus.id}</code>
-                      ), el mapa mostrará la ubicación en vivo.
-                    </p>
+                  <div className="flex min-h-[280px] flex-col justify-center gap-4 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-4 text-sm text-amber-900">
+                    <div className="text-center">
+                      <p className="font-semibold">GPS pendiente de conexión</p>
+                      <p className="mt-2 max-w-sm mx-auto text-xs text-amber-800">
+                        Conectá este celular para enviar la ubicación en vivo.
+                        busId:{" "}
+                        <code className="rounded bg-white px-1">
+                          {selectedBus.id}
+                        </code>
+                      </p>
+                    </div>
+                    {selectedBus.gpsType === "mobile" && (
+                      <MobileGpsConnect
+                        busId={selectedBus.id}
+                        onLocationSent={() => loadDashboard(false, true)}
+                      />
+                    )}
                   </div>
                 ) : (
                 <BusMap
@@ -774,15 +786,16 @@ export default function CompanyPage() {
                         </span>
                       </p>
                     )}
-                    {selectedBus.gpsType === "mobile" && (
-                      <p className="mt-2 text-[10px] text-sky-800">
-                        Conectar celular: en una próxima versión se podrá
-                        vincular la app del chofer a esta unidad (
-                        <code className="rounded bg-white px-1">
-                          {selectedBus.id}
-                        </code>
-                        ).
-                      </p>
+                    {selectedBus.gpsType === "mobile" && selectedBus.position && (
+                      <div className="mt-3">
+                        <p className="mb-2 text-[10px] font-medium text-sky-900">
+                          Reconectar o seguir enviando desde este dispositivo
+                        </p>
+                        <MobileGpsConnect
+                          busId={selectedBus.id}
+                          onLocationSent={() => loadDashboard(false, true)}
+                        />
+                      </div>
                     )}
                     {selectedBus.gpsType === "external" && (
                       <p className="mt-2 text-[10px] text-amber-800">
