@@ -20,11 +20,8 @@ interface DashboardBus {
   status: BusStatus;
   speedKmh: number;
   updatedAt: number;
-  lat: number;
-  lng: number;
+  /** Ubicación para mapa y tabla; null = GPS pendiente */
   position: { lat: number; lng: number } | null;
-  lat?: number | null;
-  lng?: number | null;
   gpsPending?: boolean;
   activeIncident: {
     id: string;
@@ -171,9 +168,11 @@ export default function CompanyPage() {
           activeIncident: b.activeIncident
             ? { ...b.activeIncident }
             : null,
-          position: b.position ?? (b.lat != null && b.lng != null ? { lat: b.lat, lng: b.lng } : null),
-          lat: b.lat,
-          lng: b.lng,
+          position:
+            b.position ??
+            (b.lat != null && b.lng != null
+              ? { lat: b.lat as number, lng: b.lng as number }
+              : null),
           gpsPending: b.gpsPending,
           routeWaypoints: b.routeWaypoints ?? [],
           currentWaypointIndex: b.currentWaypointIndex ?? 0,
@@ -598,9 +597,9 @@ export default function CompanyPage() {
                         {Math.round(bus.speedKmh)} km/h
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 font-mono text-[10px] text-slate-600">
-                        {bus.gpsPending || bus.lat == null || bus.lng == null
+                        {bus.gpsPending || !bus.position
                           ? "GPS pendiente"
-                          : `${bus.lat.toFixed(4)}, ${bus.lng.toFixed(4)}`}
+                          : `${bus.position.lat.toFixed(4)}, ${bus.position.lng.toFixed(4)}`}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-[11px] text-slate-600">
                         {formatTime(bus.updatedAt)}
