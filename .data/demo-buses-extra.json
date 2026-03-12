@@ -1,0 +1,24 @@
+{
+  "buses": [
+    {
+      "id": "bus-custom-1773346849657-7luqjd",
+      "unitId": "Micro 1",
+      "plate": "123456",
+      "routeName": "GPS móvil (posición en vivo)",
+      "companySlug": "tomas",
+      "companyId": "comp-tomas",
+      "company": "tomas",
+      "tripId": "trip-bus-custom-1773346849657-7luqjd",
+      "ticketCode": "CUSTNWXEGP",
+      "routeId": "route-mobile-gps",
+      "lat": null,
+      "lng": null,
+      "routeIdx": 0,
+      "speedKmh": 70,
+      "status": "NORMAL",
+      "updatedAt": 1773346849657,
+      "driverName": "tomas",
+      "gpsType": "mobile"
+    }
+  ]
+}

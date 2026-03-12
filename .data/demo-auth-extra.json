@@ -1,0 +1,19 @@
+{
+  "companies": [
+    {
+      "id": "comp-tomas",
+      "name": "tomas",
+      "slug": "tomas"
+    }
+  ],
+  "users": [
+    {
+      "id": "user-1773263011475",
+      "name": "tomas",
+      "email": "tomaszangoni2.0@gmail.com",
+      "passwordMock": "tomas",
+      "role": "company",
+      "companyId": "comp-tomas"
+    }
+  ]
+}
