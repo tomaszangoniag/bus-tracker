@@ -174,7 +174,7 @@ export default function PassengerPage() {
       }
 
       const tripRes = await fetch(
-        `/api/public/trip?ticket=${encodeURIComponent(
+        `/api/public/trip?tripCode=${encodeURIComponent(
           t
         )}&company=${encodeURIComponent(c)}`,
         { cache: "no-store", credentials: "same-origin" }
@@ -183,7 +183,8 @@ export default function PassengerPage() {
       if (!tripRes.ok) {
         const payload = await tripRes.json().catch(() => null);
         const message =
-          payload?.error ?? "No se encontró el viaje.";
+          payload?.error ??
+          "No se encontró el viaje. Revisá el código de viaje y la empresa.";
         setError(message);
         setTrip(null);
         setEvents([]);
@@ -297,7 +298,7 @@ export default function PassengerPage() {
               Seguimiento de viaje
             </h1>
             <p className="text-sm text-slate-500">
-              Ingresá el código de pasaje y la empresa para ver el
+              Ingresá el código de viaje y la empresa para ver el
               estado del micro en tiempo real.
             </p>
           </div>
@@ -348,13 +349,13 @@ export default function PassengerPage() {
           >
             <div className="flex-1">
               <label className="mb-1 block text-xs font-medium text-slate-600">
-                Código de pasaje
+                Código de viaje
               </label>
               <input
                 value={ticketCode}
                 onChange={(e) => setTicketCode(e.target.value)}
                 className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-sky-500/10 placeholder:text-slate-400 focus:border-sky-500 focus:ring-2"
-                placeholder="Ej: ABC123"
+                placeholder="Ej: ABC123 (mismo que en panel empresa)"
               />
             </div>
 

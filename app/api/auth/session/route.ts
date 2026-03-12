@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser, getCompanyById } from "@/lib/demoAuth";
+import { getCompanyDisplayName } from "@/lib/demoCompanyDisplayPersistence";
 
 const COOKIE = "bus_tracker_session";
 
@@ -20,7 +21,11 @@ export async function GET(req: NextRequest) {
       role: user.role,
       companyId: user.companyId,
       company: company
-        ? { id: company.id, name: company.name, slug: company.slug }
+        ? {
+            id: company.id,
+            name: getCompanyDisplayName(company.id) ?? company.name,
+            slug: company.slug,
+          }
         : null,
     },
   });

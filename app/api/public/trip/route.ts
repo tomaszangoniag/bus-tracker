@@ -11,15 +11,17 @@ const COOKIE = "bus_tracker_session";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const ticket = searchParams.get("ticket");
+  const tripCodeParam =
+    searchParams.get("tripCode") ?? searchParams.get("ticket");
   const company = searchParams.get("company");
 
-  if (!ticket || !company) {
+  if (!tripCodeParam || !company) {
     return NextResponse.json(
-      { error: "Parámetros ticket y company requeridos" },
+      { error: "Parámetros código de viaje (tripCode o ticket) y company requeridos" },
       { status: 400 }
     );
   }
+  const ticket = tripCodeParam;
 
   const token = req.cookies.get(COOKIE)?.value;
   const user = getSessionUser(token ?? null);
@@ -37,7 +39,10 @@ export async function GET(req: NextRequest) {
 
   if (!trip) {
     return NextResponse.json(
-      { error: "Viaje no encontrado para ese ticket/empresa" },
+      {
+        error:
+          "No se encontró el viaje. Verificá el código de viaje y la empresa.",
+      },
       { status: 404 }
     );
   }

@@ -41,6 +41,9 @@ interface DashboardBus {
   etaMinutes: number;
   driverName?: string;
   gpsType?: "mobile" | "external";
+  tripCode?: string;
+  tripOrigin?: string;
+  tripDestination?: string;
 }
 
 interface DashboardResponse {
@@ -212,6 +215,16 @@ export default function CompanyPage() {
   const [ticketError, setTicketError] = useState<string | null>(null);
   const [ticketSuccess, setTicketSuccess] = useState<string | null>(null);
 
+  const [companyDisplayName, setCompanyDisplayName] = useState("");
+  const [companyNameSaving, setCompanyNameSaving] = useState(false);
+  const [tripMetaForm, setTripMetaForm] = useState({
+    tripCode: "",
+    tripOrigin: "",
+    tripDestination: "",
+  });
+  const [tripMetaSaving, setTripMetaSaving] = useState(false);
+  const [tripMetaMessage, setTripMetaMessage] = useState<string | null>(null);
+
   const [incidentForm, setIncidentForm] =
     useState<IncidentFormState>({
       busId: null,
@@ -357,6 +370,27 @@ export default function CompanyPage() {
     }
     void loadBusTickets(selectedBusId);
   }, [selectedBusId]);
+
+  useEffect(() => {
+    if (!isCompany) return;
+    (async () => {
+      const res = await fetch("/api/company/profile", { credentials: "same-origin" });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.name) setCompanyDisplayName(d.name);
+      }
+    })();
+  }, [isCompany]);
+
+  useEffect(() => {
+    if (!selectedBus) return;
+    setTripMetaForm({
+      tripCode: selectedBus.tripCode ?? "",
+      tripOrigin: selectedBus.tripOrigin ?? "",
+      tripDestination: selectedBus.tripDestination ?? "",
+    });
+    setTripMetaMessage(null);
+  }, [selectedBus?.id, selectedBus?.tripCode]);
 
   const filteredBuses = useMemo(() => {
     if (!dashboard) return [];
@@ -602,6 +636,54 @@ export default function CompanyPage() {
             </button>
           </div>
         </header>
+
+        {/* Nombre visible de la empresa (pasajeros ven este nombre en sesión) */}
+        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Nombre de la empresa
+          </h2>
+          <p className="mb-3 text-xs text-slate-500">
+            Es el nombre que verán los pasajeros asociado a tu empresa. El
+            código de viaje de cada micro se busca junto con la empresa
+            (FlechaBus / Plusmar según tu cuenta).
+          </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <input
+              type="text"
+              value={companyDisplayName}
+              onChange={(e) => setCompanyDisplayName(e.target.value)}
+              className="min-w-[200px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Nombre comercial"
+            />
+            <button
+              type="button"
+              disabled={companyNameSaving || !companyDisplayName.trim()}
+              onClick={async () => {
+                setCompanyNameSaving(true);
+                try {
+                  const res = await fetch("/api/company/profile", {
+                    method: "PATCH",
+                    credentials: "same-origin",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: companyDisplayName.trim() }),
+                  });
+                  const d = await res.json().catch(() => null);
+                  if (!res.ok) throw new Error(d?.error ?? "Error");
+                  setDashError(null);
+                } catch (e) {
+                  setDashError(
+                    e instanceof Error ? e.message : "Error al guardar"
+                  );
+                } finally {
+                  setCompanyNameSaving(false);
+                }
+              }}
+              className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900 disabled:opacity-50"
+            >
+              {companyNameSaving ? "Guardando…" : "Guardar nombre"}
+            </button>
+          </div>
+        </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1062,6 +1144,19 @@ export default function CompanyPage() {
                     </dd>
                     <dt className="text-slate-500">Ruta asignada</dt>
                     <dd className="text-slate-700">{selectedBus.routeName}</dd>
+                    <dt className="text-slate-500">Código de viaje</dt>
+                    <dd className="font-mono text-slate-900">
+                      {selectedBus.tripCode ?? "—"}
+                    </dd>
+                    {(selectedBus.tripOrigin || selectedBus.tripDestination) && (
+                      <>
+                        <dt className="text-slate-500">Origen / Destino</dt>
+                        <dd className="text-slate-700">
+                          {selectedBus.tripOrigin ?? "—"} →{" "}
+                          {selectedBus.tripDestination ?? "—"}
+                        </dd>
+                      </>
+                    )}
                   </dl>
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
@@ -1110,6 +1205,111 @@ export default function CompanyPage() {
                     </dd>
                   </dl>
                 </div>
+              </div>
+
+              {/* Editar código de viaje (identificador para /passenger) */}
+              <div className="mt-6 rounded-lg border border-sky-200 bg-sky-50/40 p-4">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-900">
+                  Código de viaje del micro
+                </h3>
+                <p className="mb-3 text-xs text-sky-800">
+                  Los pasajeros buscan con <strong>empresa</strong> + este{" "}
+                  <strong>código</strong>. Debe ser único entre los micros de
+                  tu empresa.
+                </p>
+                <form
+                  className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setTripMetaSaving(true);
+                    setTripMetaMessage(null);
+                    try {
+                      const res = await fetch(
+                        `/api/company/buses/${encodeURIComponent(selectedBus.id)}/trip`,
+                        {
+                          method: "PATCH",
+                          credentials: "same-origin",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            tripCode: tripMetaForm.tripCode.trim(),
+                            tripOrigin:
+                              tripMetaForm.tripOrigin.trim() || undefined,
+                            tripDestination:
+                              tripMetaForm.tripDestination.trim() ||
+                              undefined,
+                          }),
+                        }
+                      );
+                      const d = await res.json().catch(() => null);
+                      if (!res.ok) throw new Error(d?.error ?? "Error");
+                      setTripMetaMessage("Código de viaje actualizado");
+                      await loadDashboard(false, true);
+                    } catch (err) {
+                      setTripMetaMessage(
+                        err instanceof Error ? err.message : "Error"
+                      );
+                    } finally {
+                      setTripMetaSaving(false);
+                    }
+                  }}
+                >
+                  <div className="min-w-[140px] flex-1">
+                    <label className="mb-1 block text-[10px] font-medium text-slate-600">
+                      Código de viaje *
+                    </label>
+                    <input
+                      value={tripMetaForm.tripCode}
+                      onChange={(e) =>
+                        setTripMetaForm((p) => ({
+                          ...p,
+                          tripCode: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-mono"
+                      required
+                    />
+                  </div>
+                  <div className="min-w-[120px] flex-1">
+                    <label className="mb-1 block text-[10px] font-medium text-slate-600">
+                      Origen (opc.)
+                    </label>
+                    <input
+                      value={tripMetaForm.tripOrigin}
+                      onChange={(e) =>
+                        setTripMetaForm((p) => ({
+                          ...p,
+                          tripOrigin: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div className="min-w-[120px] flex-1">
+                    <label className="mb-1 block text-[10px] font-medium text-slate-600">
+                      Destino (opc.)
+                    </label>
+                    <input
+                      value={tripMetaForm.tripDestination}
+                      onChange={(e) =>
+                        setTripMetaForm((p) => ({
+                          ...p,
+                          tripDestination: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={tripMetaSaving}
+                    className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+                  >
+                    {tripMetaSaving ? "Guardando…" : "Guardar código"}
+                  </button>
+                </form>
+                {tripMetaMessage && (
+                  <p className="mt-2 text-xs text-slate-700">{tripMetaMessage}</p>
+                )}
               </div>
 
               {/* Pasajes asociados al micro */}

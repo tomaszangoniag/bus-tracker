@@ -45,6 +45,13 @@ export interface BusState {
   driverName?: string;
   /** GPS celular vs externo */
   gpsType?: "mobile" | "external";
+  /**
+   * Código de viaje (identificador general del viaje/micro para pasajero).
+   * Si no se define, la búsqueda usa ticketCode como fallback.
+   */
+  tripCode?: string;
+  tripOrigin?: string;
+  tripDestination?: string;
 }
 
 export type IncidentSeverity = "low" | "medium" | "high";
@@ -464,6 +471,10 @@ function ensureBusesInitialized(): void {
   ];
 
   initialBuses.forEach((b) => buses.set(b.id, b));
+  // Por defecto código de viaje = ticketCode hasta que la empresa lo edite
+  for (const b of buses.values()) {
+    if (!b.tripCode) b.tripCode = b.ticketCode.toUpperCase();
+  }
 
   // Micros custom persistidos (misma empresa solo ve los suyos vía companyId)
   try {
@@ -501,6 +512,66 @@ function ensureBusesInitialized(): void {
   } catch {
     /* sin fs en edge */
   }
+
+  // Código de viaje / origen / destino persistidos por busId
+  try {
+    const { loadAllTripMeta } =
+      require("@/lib/demoBusTripMetaPersistence") as typeof import("@/lib/demoBusTripMetaPersistence");
+    for (const m of loadAllTripMeta()) {
+      const bus = buses.get(m.busId);
+      if (!bus) continue;
+      bus.tripCode = m.tripCode;
+      if (m.tripOrigin != null) bus.tripOrigin = m.tripOrigin;
+      if (m.tripDestination != null) bus.tripDestination = m.tripDestination;
+    }
+  } catch {
+    /* sin fs */
+  }
+}
+
+/** Código efectivo para búsqueda pasajero: tripCode o ticketCode. */
+export function effectiveTripCode(bus: BusState): string {
+  return (bus.tripCode?.trim() || bus.ticketCode).toUpperCase();
+}
+
+export function setBusTripMeta(
+  busId: string,
+  companyId: string,
+  tripCode: string,
+  tripOrigin?: string,
+  tripDestination?: string
+): { ok: boolean; error?: string } {
+  ensureBusesInitialized();
+  const bus = buses.get(busId);
+  if (!bus || bus.companyId !== companyId) {
+    return { ok: false, error: "Micro no encontrado" };
+  }
+  const code = tripCode.trim().toUpperCase();
+  if (!code) return { ok: false, error: "Código de viaje obligatorio" };
+  // Unicidad por empresa: otro bus misma empresa no puede tener mismo código
+  for (const b of buses.values()) {
+    if (b.id === busId) continue;
+    if (b.companyId !== companyId) continue;
+    if (effectiveTripCode(b) === code) {
+      return { ok: false, error: "Ya existe otro micro con ese código de viaje" };
+    }
+  }
+  bus.tripCode = code;
+  bus.tripOrigin = tripOrigin?.trim() || undefined;
+  bus.tripDestination = tripDestination?.trim() || undefined;
+  try {
+    const { upsertTripMeta } =
+      require("@/lib/demoBusTripMetaPersistence") as typeof import("@/lib/demoBusTripMetaPersistence");
+    upsertTripMeta({
+      busId: bus.id,
+      tripCode: code,
+      tripOrigin: bus.tripOrigin,
+      tripDestination: bus.tripDestination,
+    });
+  } catch {
+    /* ignore */
+  }
+  return { ok: true };
 }
 
 export type AddCustomBusInput = {
@@ -563,6 +634,17 @@ export function addCustomBus(
     gpsType: input.gpsType,
   };
   buses.set(bus.id, bus);
+  bus.tripCode = ticketCode;
+  try {
+    const { upsertTripMeta } =
+      require("@/lib/demoBusTripMetaPersistence") as typeof import("@/lib/demoBusTripMetaPersistence");
+    upsertTripMeta({
+      busId: bus.id,
+      tripCode: ticketCode.toUpperCase(),
+    });
+  } catch {
+    /* ignore */
+  }
   try {
     const { appendCustomBus } =
       require("@/lib/demoBusesPersistence") as typeof import("@/lib/demoBusesPersistence");
@@ -621,6 +703,13 @@ export function deleteBusForCompany(
   }
   desvioActive.delete(busId);
   mobileGpsHistory.delete(busId);
+  try {
+    const { removeTripMetaForBus } =
+      require("@/lib/demoBusTripMetaPersistence") as typeof import("@/lib/demoBusTripMetaPersistence");
+    removeTripMetaForBus(busId);
+  } catch {
+    /* ignore */
+  }
   buses.delete(busId);
   try {
     const { loadCompanyTickets, removeCompanyTicket } =
@@ -772,6 +861,9 @@ export function getAllBuses(companyId?: string): Array<{
   etaMinutes: number;
   driverName?: string;
   gpsType?: "mobile" | "external";
+  tripCode?: string;
+  tripOrigin?: string;
+  tripDestination?: string;
 }> {
   ensureBusesInitialized();
   maybeTick();
@@ -860,6 +952,9 @@ export function getAllBuses(companyId?: string): Array<{
       etaMinutes,
       driverName: bus.driverName,
       gpsType: bus.gpsType,
+      tripCode: bus.tripCode ?? bus.ticketCode,
+      tripOrigin: bus.tripOrigin,
+      tripDestination: bus.tripDestination,
     };
   });
 }
@@ -933,12 +1028,12 @@ export function getTripByTicketAndCompany(
   }
 
   if (!bus) {
-    bus = Array.from(buses.values()).find(
-      (b) =>
-        b.ticketCode.toUpperCase() === codeUpper &&
-        (b.companySlug === company || b.company === company)
-    );
-    if (bus) resolvedTicketCode = bus.ticketCode;
+    // Búsqueda por código de viaje (tripCode) o ticketCode legacy, misma empresa
+    bus = Array.from(buses.values()).find((b) => {
+      if (b.companySlug !== company && b.company !== company) return false;
+      return effectiveTripCode(b) === codeUpper;
+    });
+    if (bus) resolvedTicketCode = bus.tripCode?.trim() || bus.ticketCode;
   }
   if (!bus) return null;
 
