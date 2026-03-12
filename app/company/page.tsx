@@ -92,6 +92,59 @@ function formatTime(ts: number) {
   });
 }
 
+function formatDateTime(ts: number) {
+  return new Date(ts).toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** Distancia en km entre dos puntos (Haversine). */
+function haversineKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number }
+): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const x =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  return R * c;
+}
+
+/** Suma de tramos recorridos según índice actual sobre routeWaypoints (demo aproximado). */
+function kmRecorridosAprox(bus: DashboardBus): string {
+  const wps = bus.routeWaypoints;
+  if (wps.length < 2) return "—";
+  let km = 0;
+  const idx = Math.min(
+    Math.max(0, bus.currentWaypointIndex),
+    wps.length - 1
+  );
+  for (let i = 0; i < idx; i++) {
+    km += haversineKm(wps[i], wps[i + 1]);
+  }
+  return `${km.toFixed(1)} km (aprox.)`;
+}
+
+function statusLabel(status: BusStatus): string {
+  if (status === "NORMAL") return "Normal";
+  if (status === "DELAY") return "Demora";
+  return "Incidente";
+}
+
+function gpsTypeLabel(bus: DashboardBus): string {
+  if (bus.gpsType === "external") return "GPS externo";
+  if (bus.gpsType === "mobile") return "GPS del celular";
+  return "Simulación demo";
+}
+
 function statusBadgeClasses(status: BusStatus) {
   switch (status) {
     case "NORMAL":
@@ -751,11 +804,11 @@ export default function CompanyPage() {
           </div>
         </section>
 
-        {/* Panel detalle + mapa del micro seleccionado */}
+        {/* Panel detalle + mapa + estadísticas del micro seleccionado */}
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h2 className="text-sm font-semibold text-slate-800">
-              Detalle en mapa
+              Detalle del micro
             </h2>
             {selectedBus && (
               <button
@@ -769,172 +822,245 @@ export default function CompanyPage() {
           </div>
           {!selectedBus && (
             <div className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-              Seleccioná un micro en la tabla para ver el detalle en mapa
+              Seleccioná un micro para ver detalles y estadísticas
             </div>
           )}
           {selectedBus && (
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-              <div className="min-h-[280px]">
-                {selectedBus.gpsPending || !selectedBus.position ? (
-                  <div className="flex min-h-[280px] flex-col justify-center gap-4 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-4 text-sm text-amber-900">
-                    <div className="text-center">
-                      <p className="font-semibold">GPS pendiente de conexión</p>
-                      <p className="mt-2 max-w-sm mx-auto text-xs text-amber-800">
-                        Conectá este celular para enviar la ubicación en vivo.
-                        busId:{" "}
-                        <code className="rounded bg-white px-1">
-                          {selectedBus.id}
-                        </code>
-                      </p>
-                    </div>
-                    {selectedBus.gpsType === "mobile" && (
-                      <MobileGpsConnect
-                        busId={selectedBus.id}
-                        onLocationSent={() => loadDashboard(false, true)}
-                      />
-                    )}
-                  </div>
-                ) : (
-                <BusMap
-                  position={selectedBus.position}
-                  routeWaypoints={selectedBus.routeWaypoints}
-                  currentWaypointIndex={selectedBus.currentWaypointIndex}
-                />
-                )}
-              </div>
-              <div className="space-y-3 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs font-semibold text-slate-900">
-                    {selectedBus.unitId}
-                  </span>
-                  <span className="text-slate-600">·</span>
-                  <span className="font-medium text-slate-800">
-                    {selectedBus.plate}
-                  </span>
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${statusBadgeClasses(
-                      selectedBus.status
-                    )}`}
-                  >
-                    {selectedBus.status === "NORMAL"
-                      ? "Normal"
-                      : selectedBus.status === "DELAY"
-                      ? "Demora"
-                      : "Incidente"}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-600">{selectedBus.routeName}</p>
-                {(selectedBus.driverName || selectedBus.gpsType) && (
-                  <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs">
-                    {selectedBus.driverName && (
-                      <p>
-                        <span className="text-slate-500">Chofer:</span>{" "}
-                        <span className="font-medium text-slate-800">
-                          {selectedBus.driverName}
-                        </span>
-                      </p>
-                    )}
-                    {selectedBus.gpsType && (
-                      <p className="mt-1">
-                        <span className="text-slate-500">GPS:</span>{" "}
-                        <span className="font-medium text-slate-800">
-                          {selectedBus.gpsType === "external"
-                            ? "Externo (integración pendiente)"
-                            : "Celular"}
-                        </span>
-                      </p>
-                    )}
-                    {selectedBus.gpsType === "mobile" && selectedBus.position && (
-                      <div className="mt-3">
-                        <p className="mb-2 text-[10px] font-medium text-sky-900">
-                          Reconectar o seguir enviando desde este dispositivo
+            <>
+              {/* Fila mapa + acciones rápidas */}
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                <div className="min-h-[280px]">
+                  {selectedBus.gpsPending || !selectedBus.position ? (
+                    <div className="flex min-h-[280px] flex-col justify-center gap-4 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-4 text-sm text-amber-900">
+                      <div className="text-center">
+                        <p className="font-semibold">GPS pendiente de conexión</p>
+                        <p className="mt-2 mx-auto max-w-sm text-xs text-amber-800">
+                          Conectá este celular para enviar la ubicación en vivo.
+                          busId:{" "}
+                          <code className="rounded bg-white px-1">
+                            {selectedBus.id}
+                          </code>
                         </p>
+                      </div>
+                      {selectedBus.gpsType === "mobile" && (
                         <MobileGpsConnect
                           busId={selectedBus.id}
                           onLocationSent={() => loadDashboard(false, true)}
                         />
+                      )}
+                    </div>
+                  ) : (
+                    <BusMap
+                      position={selectedBus.position}
+                      routeWaypoints={selectedBus.routeWaypoints}
+                      currentWaypointIndex={selectedBus.currentWaypointIndex}
+                    />
+                  )}
+                </div>
+                <div className="space-y-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-xs font-semibold text-slate-900">
+                      {selectedBus.unitId}
+                    </span>
+                    <span className="text-slate-600">·</span>
+                    <span className="font-medium text-slate-800">
+                      {selectedBus.plate}
+                    </span>
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${statusBadgeClasses(
+                        selectedBus.status
+                      )}`}
+                    >
+                      {statusLabel(selectedBus.status)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600">{selectedBus.routeName}</p>
+                  {(selectedBus.driverName || selectedBus.gpsType) && (
+                    <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs">
+                      {selectedBus.driverName && (
+                        <p>
+                          <span className="text-slate-500">Chofer:</span>{" "}
+                          <span className="font-medium text-slate-800">
+                            {selectedBus.driverName}
+                          </span>
+                        </p>
+                      )}
+                      {selectedBus.gpsType && (
+                        <p className="mt-1">
+                          <span className="text-slate-500">GPS:</span>{" "}
+                          <span className="font-medium text-slate-800">
+                            {selectedBus.gpsType === "external"
+                              ? "Externo (integración pendiente)"
+                              : "Celular"}
+                          </span>
+                        </p>
+                      )}
+                      {selectedBus.gpsType === "mobile" &&
+                        selectedBus.position && (
+                          <div className="mt-3">
+                            <p className="mb-2 text-[10px] font-medium text-sky-900">
+                              Reconectar o seguir enviando desde este dispositivo
+                            </p>
+                            <MobileGpsConnect
+                              busId={selectedBus.id}
+                              onLocationSent={() => loadDashboard(false, true)}
+                            />
+                          </div>
+                        )}
+                      {selectedBus.gpsType === "external" && (
+                        <p className="mt-2 text-[10px] text-amber-800">
+                          Espacio reservado para ID de dispositivo / API externa.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      Incidente activo
+                    </p>
+                    {selectedBus.activeIncident ? (
+                      <div className="text-xs text-slate-800">
+                        <p className="font-medium">
+                          {selectedBus.activeIncident.type} ·{" "}
+                          <span className="capitalize">
+                            {selectedBus.activeIncident.severity}
+                          </span>
+                        </p>
+                        <p className="mt-1 text-slate-600">
+                          {selectedBus.activeIncident.description}
+                        </p>
+                        <p className="mt-1 text-slate-500">
+                          ETA incidente:{" "}
+                          {selectedBus.activeIncident.etaMinutes} min
+                        </p>
                       </div>
-                    )}
-                    {selectedBus.gpsType === "external" && (
-                      <p className="mt-2 text-[10px] text-amber-800">
-                        Espacio reservado para ID de dispositivo / API externa.
+                    ) : (
+                      <p className="text-xs text-slate-500">
+                        Sin incidente activo
                       </p>
                     )}
                   </div>
-                )}
-                <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                  <dt className="text-slate-500">Velocidad</dt>
-                  <dd className="font-medium text-slate-900">
-                    {Math.round(selectedBus.speedKmh)} km/h
-                  </dd>
-                  <dt className="text-slate-500">ETA estimado</dt>
-                  <dd className="font-medium text-slate-900">
-                    {selectedBus.etaMinutes <= 0
-                      ? "En terminal"
-                      : `${selectedBus.etaMinutes} min`}
-                  </dd>
-                  <dt className="text-slate-500">Actualizado</dt>
-                  <dd className="text-slate-700">
-                    {formatTime(selectedBus.updatedAt)}
-                  </dd>
-                </dl>
-                <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                    Incidente activo
-                  </p>
-                  {selectedBus.activeIncident ? (
-                    <div className="text-xs text-slate-800">
-                      <p className="font-medium">
-                        {selectedBus.activeIncident.type} ·{" "}
-                        <span className="capitalize">
-                          {selectedBus.activeIncident.severity}
-                        </span>
-                      </p>
-                      <p className="mt-1 text-slate-600">
-                        {selectedBus.activeIncident.description}
-                      </p>
-                      <p className="mt-1 text-slate-500">
-                        ETA incidente:{" "}
-                        {selectedBus.activeIncident.etaMinutes} min
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-500">
-                      Sin incidente activo
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => openIncidentForm(selectedBus.id)}
-                    className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[10px] font-medium text-amber-800 hover:bg-amber-100"
-                  >
-                    Crear incidente
-                  </button>
-                  {selectedBus.activeIncident && (
+                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() =>
-                        resolveIncident(selectedBus.activeIncident!.id)
-                      }
-                      className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[10px] font-medium text-emerald-800 hover:bg-emerald-100"
+                      onClick={() => openIncidentForm(selectedBus.id)}
+                      className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[10px] font-medium text-amber-800 hover:bg-amber-100"
                     >
-                      Resolver incidente
+                      Crear incidente
                     </button>
-                  )}
-                  {isCustomBus(selectedBus.id) && (
-                    <button
-                      type="button"
-                      onClick={() => confirmDeleteBus(selectedBus.id)}
-                      className="rounded-full border border-red-300 bg-red-50 px-3 py-1 text-[10px] font-medium text-red-800 hover:bg-red-100"
-                    >
-                      Borrar micro
-                    </button>
-                  )}
+                    {selectedBus.activeIncident && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          resolveIncident(selectedBus.activeIncident!.id)
+                        }
+                        className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[10px] font-medium text-emerald-800 hover:bg-emerald-100"
+                      >
+                        Resolver incidente
+                      </button>
+                    )}
+                    {isCustomBus(selectedBus.id) && (
+                      <button
+                        type="button"
+                        onClick={() => confirmDeleteBus(selectedBus.id)}
+                        className="rounded-full border border-red-300 bg-red-50 px-3 py-1 text-[10px] font-medium text-red-800 hover:bg-red-100"
+                      >
+                        Borrar micro
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+
+              {/* Detalles del micro + Estadísticas (solo seleccionado) */}
+              <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Detalles del micro
+                  </h3>
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
+                    <dt className="text-slate-500">Identificador</dt>
+                    <dd className="font-mono font-medium text-slate-900">
+                      {selectedBus.unitId}
+                    </dd>
+                    <dt className="text-slate-500">Patente</dt>
+                    <dd className="font-medium text-slate-900">
+                      {selectedBus.plate}
+                    </dd>
+                    <dt className="text-slate-500">Chofer</dt>
+                    <dd className="text-slate-800">
+                      {selectedBus.driverName ?? "—"}
+                    </dd>
+                    <dt className="text-slate-500">Tipo de GPS</dt>
+                    <dd className="text-slate-800">{gpsTypeLabel(selectedBus)}</dd>
+                    <dt className="text-slate-500">Empresa</dt>
+                    <dd className="text-slate-800">{selectedBus.company}</dd>
+                    <dt className="text-slate-500">Estado actual</dt>
+                    <dd>
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${statusBadgeClasses(
+                          selectedBus.status
+                        )}`}
+                      >
+                        {statusLabel(selectedBus.status)}
+                      </span>
+                    </dd>
+                    <dt className="text-slate-500">Última actualización</dt>
+                    <dd className="text-slate-700">
+                      {formatDateTime(selectedBus.updatedAt)}
+                    </dd>
+                    <dt className="text-slate-500">Ruta asignada</dt>
+                    <dd className="text-slate-700">{selectedBus.routeName}</dd>
+                  </dl>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Estadísticas
+                  </h3>
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
+                    <dt className="text-slate-500">Velocidad actual</dt>
+                    <dd className="font-medium text-slate-900">
+                      {Math.round(selectedBus.speedKmh)} km/h
+                    </dd>
+                    <dt className="text-slate-500">ETA</dt>
+                    <dd className="font-medium text-slate-900">
+                      {selectedBus.etaMinutes <= 0
+                        ? "En terminal"
+                        : `${selectedBus.etaMinutes} min`}
+                    </dd>
+                    <dt className="text-slate-500">Km recorridos</dt>
+                    <dd className="text-slate-800">
+                      {kmRecorridosAprox(selectedBus)}
+                    </dd>
+                    <dt className="text-slate-500">Tiempo activo</dt>
+                    <dd className="text-slate-600">
+                      Demo: sesión en curso (sin histórico persistido)
+                    </dd>
+                    <dt className="text-slate-500">Cantidad de incidentes</dt>
+                    <dd className="text-slate-800">
+                      {selectedBus.activeIncident ? "1 activo" : "0 activos"}{" "}
+                      <span className="text-slate-500">
+                        (solo incidente actual en demo)
+                      </span>
+                    </dd>
+                    <dt className="text-slate-500">Tiempo detenido</dt>
+                    <dd className="text-slate-600">
+                      {selectedBus.speedKmh < 5
+                        ? "Posiblemente detenido (velocidad baja)"
+                        : "En movimiento (estimado por velocidad simulada)"}
+                    </dd>
+                    <dt className="text-slate-500">Última conexión GPS</dt>
+                    <dd className="text-slate-800">
+                      {selectedBus.gpsType === "mobile" && selectedBus.position
+                        ? formatDateTime(selectedBus.updatedAt)
+                        : selectedBus.gpsType === "mobile"
+                          ? "Sin conexión aún"
+                          : "N/D (simulación demo)"}
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </>
           )}
         </section>
 
