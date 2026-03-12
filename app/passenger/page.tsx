@@ -7,8 +7,6 @@ const BusMap = dynamic(() => import("../../components/BusMap"), {
   ssr: false,
 });
 
-type CompanyOption = "flechabus" | "plusmar";
-
 interface TripResponse {
   tripId: string;
   ticketCode: string;
@@ -55,9 +53,10 @@ interface ToastState {
   tone: "success" | "warning" | "error" | "info";
 }
 
-const COMPANY_OPTIONS: { slug: CompanyOption; label: string }[] = [
-  { slug: "flechabus", label: "FlechaBus" },
-  { slug: "plusmar", label: "Plusmar" },
+/** Fallback si la API no responde (compat demo) */
+const FALLBACK_COMPANIES: { slug: string; name: string }[] = [
+  { slug: "flechabus", name: "FlechaBus" },
+  { slug: "plusmar", name: "Plusmar" },
 ];
 
 function formatTime(ts: number | null | undefined) {
@@ -106,7 +105,11 @@ function statusConfig(state: TripResponse["state"]) {
 
 export default function PassengerPage() {
   const [ticketCode, setTicketCode] = useState("ABC123");
-  const [company, setCompany] = useState<CompanyOption>("flechabus");
+  /** Slug empresa — valor del select; debe coincidir con company en API trip */
+  const [company, setCompany] = useState<string>("flechabus");
+  const [companyOptions, setCompanyOptions] = useState<
+    { slug: string; name: string }[]
+  >(FALLBACK_COMPANIES);
   const [myTrips, setMyTrips] = useState<
     Array<{
       ticketCode: string;
@@ -136,6 +139,33 @@ export default function PassengerPage() {
       );
     }, 3500);
   };
+
+  // Cargar lista de empresas (seed + creadas en demo) — fuente única vía API
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/public/companies")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.companies?.length) return;
+        const opts = data.companies.map(
+          (c: { slug: string; name: string }) => ({
+            slug: c.slug,
+            name: c.name,
+          })
+        );
+        setCompanyOptions(opts);
+        // Si el slug actual no está en la lista, usar el primero
+        setCompany((prev) =>
+          opts.some((o: { slug: string }) => o.slug === prev)
+            ? prev
+            : opts[0].slug
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // /passenger es ruta pública: no redirigir según rol.
   // Solo cargamos "Mis viajes" si hay sesión de pasajero.
@@ -323,7 +353,7 @@ export default function PassengerPage() {
                     className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-left text-sm hover:bg-sky-100"
                     onClick={() => {
                       setTicketCode(t.ticketCode);
-                      setCompany(t.companySlug as CompanyOption);
+                      setCompany(t.companySlug);
                       loadData(true, t.ticketCode, t.companySlug);
                     }}
                   >
@@ -365,14 +395,12 @@ export default function PassengerPage() {
               </label>
               <select
                 value={company}
-                onChange={(e) =>
-                  setCompany(e.target.value as CompanyOption)
-                }
+                onChange={(e) => setCompany(e.target.value)}
                 className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-sky-500/10 focus:border-sky-500 focus:ring-2"
               >
-                {COMPANY_OPTIONS.map((opt) => (
+                {companyOptions.map((opt) => (
                   <option key={opt.slug} value={opt.slug}>
-                    {opt.label}
+                    {opt.name}
                   </option>
                 ))}
               </select>
