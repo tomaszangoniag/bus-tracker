@@ -175,6 +175,26 @@ function getRouteById(routeId: string): SimRoute | undefined {
   return ROUTES.find((r) => r.id === routeId);
 }
 
+/**
+ * Construye un Waypoint válido sin usar null.
+ * Micros mobile sin GPS aún no llegan aquí (getTrip devuelve null antes).
+ * Si lat/lng faltan (estado inconsistente), usa primer punto de ruta o fallback.
+ */
+function waypointFromBusOrFallback(bus: BusState): Waypoint {
+  if (
+    bus.lat != null &&
+    bus.lng != null &&
+    Number.isFinite(bus.lat) &&
+    Number.isFinite(bus.lng)
+  ) {
+    return { lat: bus.lat, lng: bus.lng };
+  }
+  const route = getRouteById(bus.routeId);
+  const first = route?.waypoints?.[0];
+  if (first) return first;
+  return BUENOS_AIRES;
+}
+
 /** Rutas cuya polyline ya fue reemplazada por OSRM (evita re-mapear idx al re-aplicar). */
 const roadHydratedRouteIds = new Set<string>();
 
@@ -859,17 +879,17 @@ export function getTripByTicketAndCompany(
       : "DELAY"
     : bus.status;
 
-  // Posición: GPS móvil = bus.lat/lng actual; demo = punto en polyline
+  // Posición: GPS móvil = bus.lat/lng actual (ya validados arriba); demo = polyline o fallback
   const idx =
     bus.gpsType === "mobile"
       ? Math.max(0, waypoints.length - 1)
       : Math.min(bus.routeIdx, Math.max(0, waypoints.length - 1));
   const currentPos: Waypoint =
     bus.gpsType === "mobile"
-      ? { lat: bus.lat, lng: bus.lng }
+      ? waypointFromBusOrFallback(bus)
       : waypoints.length > 0
         ? waypoints[idx]
-        : { lat: bus.lat, lng: bus.lng };
+        : waypointFromBusOrFallback(bus);
   const remainingKm =
     waypoints.length > 1 && bus.gpsType !== "mobile"
       ? remainingDistanceKm(currentPos, waypoints, idx)
@@ -906,7 +926,7 @@ export function getTripByTicketAndCompany(
       status: state,
       speedKmh: bus.speedKmh,
       updatedAt: bus.updatedAt,
-      position: { lat: bus.lat!, lng: bus.lng! },
+      position: waypointFromBusOrFallback(bus),
       waypoints,
     },
     state,
