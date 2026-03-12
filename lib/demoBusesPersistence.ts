@@ -74,3 +74,11 @@ export function appendCustomBus(bus: PersistedCustomBus): void {
   store.buses.push(bus);
   writeStore(store.buses);
 }
+
+/** Quita un micro persistido por id (si existe). */
+export function removeCustomBus(busId: string): void {
+  const store = readStore();
+  const next = store.buses.filter((b) => b.id !== busId);
+  if (next.length === store.buses.length) return;
+  writeStore(next);
+}

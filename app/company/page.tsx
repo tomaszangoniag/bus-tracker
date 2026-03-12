@@ -131,6 +131,12 @@ export default function CompanyPage() {
     gpsType: "mobile" as "mobile" | "external",
   });
 
+  const [deleteConfirmBusId, setDeleteConfirmBusId] = useState<string | null>(
+    null
+  );
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+
   const [incidentForm, setIncidentForm] =
     useState<IncidentFormState>({
       busId: null,
@@ -306,6 +312,44 @@ export default function CompanyPage() {
       );
     } finally {
       setAddBusSubmitting(false);
+    }
+  };
+
+  const isCustomBus = (id: string) => id.startsWith("bus-custom-");
+
+  const confirmDeleteBus = (busId: string) => {
+    setDeleteConfirmBusId(busId);
+    setDeleteSuccess(null);
+  };
+
+  const executeDeleteBus = async () => {
+    if (!deleteConfirmBusId) return;
+    setDeleteSubmitting(true);
+    setDeleteSuccess(null);
+    try {
+      const res = await fetch(
+        `/api/company/buses/${encodeURIComponent(deleteConfirmBusId)}`,
+        { method: "DELETE", credentials: "same-origin" }
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error ?? "No se pudo eliminar");
+      }
+      if (selectedBusId === deleteConfirmBusId) {
+        setSelectedBusId(null);
+      }
+      setDeleteConfirmBusId(null);
+      setDeleteSuccess(data?.message ?? "Micro eliminado correctamente");
+      setDashError(null);
+      await loadDashboard(false, true);
+      setTimeout(() => setDeleteSuccess(null), 4000);
+    } catch (e) {
+      setDashError(
+        e instanceof Error ? e.message : "Error al eliminar micro"
+      );
+      setDeleteConfirmBusId(null);
+    } finally {
+      setDeleteSubmitting(false);
     }
   };
 
@@ -520,6 +564,11 @@ export default function CompanyPage() {
               {dashError}
             </p>
           )}
+          {deleteSuccess && (
+            <p className="mb-3 text-xs font-medium text-emerald-700">
+              {deleteSuccess}
+            </p>
+          )}
 
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
@@ -660,6 +709,15 @@ export default function CompanyPage() {
                               className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-800 hover:bg-emerald-100"
                             >
                               Resolver incidente
+                            </button>
+                          )}
+                          {isCustomBus(bus.id) && (
+                            <button
+                              type="button"
+                              onClick={() => confirmDeleteBus(bus.id)}
+                              className="inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2 py-1 text-[10px] font-medium text-red-800 hover:bg-red-100"
+                            >
+                              Borrar micro
                             </button>
                           )}
                         </div>
@@ -865,11 +923,61 @@ export default function CompanyPage() {
                       Resolver incidente
                     </button>
                   )}
+                  {isCustomBus(selectedBus.id) && (
+                    <button
+                      type="button"
+                      onClick={() => confirmDeleteBus(selectedBus.id)}
+                      className="rounded-full border border-red-300 bg-red-50 px-3 py-1 text-[10px] font-medium text-red-800 hover:bg-red-100"
+                    >
+                      Borrar micro
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
           )}
         </section>
+
+        {/* Modal confirmar borrar micro */}
+        {deleteConfirmBusId && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-bus-title"
+          >
+            <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl">
+              <h2
+                id="delete-bus-title"
+                className="mb-2 text-lg font-semibold text-slate-900"
+              >
+                ¿Seguro que querés eliminar este micro?
+              </h2>
+              <p className="mb-4 text-sm text-slate-600">
+                Se quitará de la flota y del almacenamiento demo. No se puede
+                deshacer.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmBusId(null)}
+                  disabled={deleteSubmitting}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void executeDeleteBus()}
+                  disabled={deleteSubmitting}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {deleteSubmitting ? "Eliminando…" : "Eliminar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Modal Añadir micro */}
         {addBusOpen && (

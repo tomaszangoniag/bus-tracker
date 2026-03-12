@@ -593,6 +593,46 @@ export function addCustomBus(
 }
 
 /**
+ * Elimina un micro creado desde el panel (bus-custom-*), solo si pertenece a la empresa.
+ * Quita del Map, historial GPS móvil, desvío, persistencia demo e incidentes abiertos.
+ * Los buses seed (bus-f1, etc.) no se pueden borrar para no romper el demo.
+ */
+export function deleteBusForCompany(
+  busId: string,
+  companyId: string
+): { ok: boolean; error?: string } {
+  ensureBusesInitialized();
+  const bus = buses.get(busId);
+  if (!bus) return { ok: false, error: "Micro no encontrado" };
+  if (bus.companyId !== companyId) {
+    return { ok: false, error: "Este micro no pertenece a tu empresa" };
+  }
+  if (!busId.startsWith("bus-custom-")) {
+    return {
+      ok: false,
+      error: "Solo se pueden eliminar micros creados desde el panel (no los de demo fijos).",
+    };
+  }
+  // Resolver incidentes abiertos de este bus
+  for (const inc of incidents) {
+    if (inc.busId === busId && !inc.resolvedAt) {
+      inc.resolvedAt = now();
+    }
+  }
+  desvioActive.delete(busId);
+  mobileGpsHistory.delete(busId);
+  buses.delete(busId);
+  try {
+    const { removeCustomBus } =
+      require("@/lib/demoBusesPersistence") as typeof import("@/lib/demoBusesPersistence");
+    removeCustomBus(busId);
+  } catch {
+    /* ignore */
+  }
+  return { ok: true };
+}
+
+/**
  * Reemplaza los waypoints de una ruta por la geometría de carretera (OSRM).
  * Remapea routeIdx de cada bus en esa ruta para mantener progreso proporcional.
  * Así el tick avanza sobre la misma polyline que ve el pasajero.
