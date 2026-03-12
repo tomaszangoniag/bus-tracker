@@ -43,6 +43,31 @@ interface DashboardResponse {
   buses: DashboardBus[];
 }
 
+/** Normaliza ubicación solo desde position o desde lat/lng en JSON (sin tipar como DashboardBus). */
+function normalizeDashboardPosition(raw: unknown): {
+  lat: number;
+  lng: number;
+} | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const pos = o.position;
+  if (
+    pos &&
+    typeof pos === "object" &&
+    typeof (pos as { lat?: unknown }).lat === "number" &&
+    typeof (pos as { lng?: unknown }).lng === "number"
+  ) {
+    const lat = (pos as { lat: number }).lat;
+    const lng = (pos as { lng: number }).lng;
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+  }
+  if (typeof o.lat === "number" && typeof o.lng === "number") {
+    if (Number.isFinite(o.lat) && Number.isFinite(o.lng))
+      return { lat: o.lat, lng: o.lng };
+  }
+  return null;
+}
+
 type StatusFilter = "ALL" | BusStatus;
 
 interface IncidentFormState {
@@ -158,26 +183,27 @@ export default function CompanyPage() {
         const data = await res.json().catch(() => null);
         throw new Error(data?.error ?? "Error al cargar dashboard");
       }
-      const data: DashboardResponse = await res.json();
+      const data = (await res.json()) as { buses: unknown[] };
       // Nueva referencia para forzar re-render (incidentes activos / resueltos)
       setDashboard({
-        buses: data.buses.map((b) => ({
-          ...b,
-          driverName: b.driverName,
-          gpsType: b.gpsType,
-          activeIncident: b.activeIncident
-            ? { ...b.activeIncident }
-            : null,
-          position:
-            b.position ??
-            (b.lat != null && b.lng != null
-              ? { lat: b.lat as number, lng: b.lng as number }
-              : null),
-          gpsPending: b.gpsPending,
-          routeWaypoints: b.routeWaypoints ?? [],
-          currentWaypointIndex: b.currentWaypointIndex ?? 0,
-          etaMinutes: b.etaMinutes ?? 0,
-        })),
+        buses: data.buses.map((raw) => {
+          const b = raw as DashboardBus;
+          const position = normalizeDashboardPosition(raw) ?? b.position ?? null;
+          return {
+            ...b,
+            driverName: b.driverName,
+            gpsType: b.gpsType,
+            activeIncident: b.activeIncident
+              ? { ...b.activeIncident }
+              : null,
+            position,
+            gpsPending:
+              b.gpsPending ?? (position == null && b.gpsType === "mobile"),
+            routeWaypoints: b.routeWaypoints ?? [],
+            currentWaypointIndex: b.currentWaypointIndex ?? 0,
+            etaMinutes: b.etaMinutes ?? 0,
+          };
+        }),
       });
     } catch (err) {
       console.error(err);
